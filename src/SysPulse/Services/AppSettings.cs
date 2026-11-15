@@ -20,6 +20,11 @@ public sealed class AppSettings
     public bool CloseToTray { get; set; } = true;
     public bool TrayHintShown { get; set; }
 
+    /// <summary>Remote PCs running SysPulse Agent.</summary>
+    public List<SavedMachine> Machines { get; set; } = [];
+    /// <summary>Id of the machine shown last time ("local" = this PC).</summary>
+    public string SelectedMachine { get; set; } = "local";
+
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     private static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SysPulse");

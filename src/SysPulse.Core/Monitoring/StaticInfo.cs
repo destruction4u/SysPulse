@@ -1,34 +1,36 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Management;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
-namespace SysPulse.Services;
+namespace SysPulse.Core;
 
 /// <summary>Facts about the machine that don't change while the app runs (collected once, via WMI + registry).</summary>
+/// <remarks>Public setters so it can be sent as JSON from the agent to the viewer.</remarks>
 public sealed class StaticInfo
 {
-    public string User { get; private set; } = Environment.UserName;
-    public string Host { get; private set; } = Environment.MachineName;
-    public string Os { get; private set; } = "Windows";
-    public string Kernel { get; private set; } = "";
-    public string Model { get; private set; } = "";
-    public string Bios { get; private set; } = "";
-    public string Cpu { get; private set; } = "";
-    public string CpuTopology { get; private set; } = "";
-    public double CpuBaseMhz { get; private set; }
-    public int LogicalProcessors { get; private set; } = Environment.ProcessorCount;
-    public List<string> Gpus { get; } = [];
-    public List<string> Displays { get; } = [];
-    public string Theme { get; private set; } = "";
-    public string Locale { get; private set; } = CultureInfo.CurrentUICulture.Name;
-    public string LocalIp { get; private set; } = "";
+    public string User { get; set; } = Environment.UserName;
+    public string Host { get; set; } = Environment.MachineName;
+    public string Os { get; set; } = "Windows";
+    public string Kernel { get; set; } = "";
+    public string Model { get; set; } = "";
+    public string Bios { get; set; } = "";
+    public string Cpu { get; set; } = "";
+    public string CpuTopology { get; set; } = "";
+    public double CpuBaseMhz { get; set; }
+    public int LogicalProcessors { get; set; } = Environment.ProcessorCount;
+    public List<string> Gpus { get; set; } = [];
+    public List<string> Displays { get; set; } = [];
+    public string Theme { get; set; } = "";
+    public string Locale { get; set; } = CultureInfo.CurrentUICulture.Name;
+    public string LocalIp { get; set; } = "";
 
     public static StaticInfo Collect()
     {
         var i = new StaticInfo();
+        bool asService = System.Security.Principal.WindowsIdentity.GetCurrent().IsSystem;
 
         // OS + kernel build
         using (var cv = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
@@ -47,8 +49,16 @@ public sealed class StaticInfo
             i.Os = string.Join(' ', new[] { caption, display, arch }.Where(s => s.Length > 0));
         }
 
-        foreach (var o in Query("SELECT Manufacturer, Model FROM Win32_ComputerSystem"))
+        foreach (var o in Query("SELECT Manufacturer, Model, UserName FROM Win32_ComputerSystem"))
+        {
             i.Model = $"{Str(o, "Manufacturer")} {Str(o, "Model")}".Trim();
+            if (asService)
+            {
+                // As a Windows service we run as SYSTEM: report who is signed in at the console instead.
+                string console = Str(o, "UserName");
+                i.User = console.Length > 0 ? console[(console.LastIndexOf('\\') + 1)..] : "nobody-signed-in";
+            }
+        }
 
         foreach (var o in Query("SELECT SMBIOSBIOSVersion FROM Win32_BIOS"))
             i.Bios = Str(o, "SMBIOSBIOSVersion");
@@ -70,8 +80,9 @@ public sealed class StaticInfo
                 i.Displays.Add(hz.Length > 0 ? $"{w}x{h} @ {hz} Hz" : $"{w}x{h}");
         }
 
-        using (var p = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+        if (!asService) // SYSTEM's own theme setting would be meaningless
         {
+            using var p = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
             object? light = p?.GetValue("AppsUseLightTheme");
             i.Theme = light is int v ? (v == 0 ? "Dark" : "Light") : "Unknown";
         }

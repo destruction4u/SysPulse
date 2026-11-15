@@ -1,8 +1,8 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Net.NetworkInformation;
 
-namespace SysPulse.Services;
+namespace SysPulse.Core;
 
 public sealed record ProcSample(string Name, int Pid, double Cpu, long Memory);
 public sealed record DriveSample(string Name, string Label, long Total, long Free);

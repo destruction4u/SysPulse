@@ -10,7 +10,7 @@
     <UseWindowsForms>true</UseWindowsForms>
 
     <ApplicationIcon>Assets\SysPulse.ico</ApplicationIcon>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>SysPulse</Product>
     <AssemblyTitle>SysPulse</AssemblyTitle>
     <Description>System info and live resource monitor for Windows</Description>
@@ -18,8 +18,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="11.0.0" />
-    <PackageReference Include="System.Management" Version="11.0.0" />
+    <!-- (Core also brings System.Security.Cryptography.ProtectedData, used for DPAPI in SavedMachine.cs) -->
+    <ProjectReference Include="..\SysPulse.Core\SysPulse.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

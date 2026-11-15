@@ -3,7 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows.Media;
-using SysPulse.Services;
+using SysPulse.Core;
 
 namespace SysPulse.ViewModels;
 
@@ -79,7 +79,8 @@ public sealed class CoreVM(int index) : ObservableObject
     }
 }
 
-public sealed class MainViewModel : ObservableObject
+/// <summary>Everything one machine's dashboard shows (this PC, or a remote PC via its agent).</summary>
+public sealed class DashboardViewModel : ObservableObject
 {
     private static Brush B(string hex)
     {
@@ -108,7 +109,7 @@ public sealed class MainViewModel : ObservableObject
     private string _status = "Starting…";
     private int _processCount;
 
-    public MainViewModel() => Metrics = [Cpu, Memory, Gpu, Network, Disk, Power];
+    public DashboardViewModel() => Metrics = [Cpu, Memory, Gpu, Network, Disk, Power];
 
     public string Title { get => _title; private set => Set(ref _title, value); }
     public string Separator => new('─', Title.Length);
@@ -140,9 +141,11 @@ public sealed class MainViewModel : ObservableObject
         Status = "Starting monitors…";
     }
 
+    public bool HasInfo => _info != null;
+
     public void Apply(Sample s)
     {
-        var info = _info!;
+        if (_info is not { } info) return; // static info must arrive first
 
         // CPU
         Cpu.Value = $"{s.CpuPercent:0}%";

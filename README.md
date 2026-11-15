@@ -1,4 +1,4 @@
-<p align="center"><img src="Assets/icon-256.png" width="96" alt="SysPulse icon"></p>
+<p align="center"><img src="src/SysPulse/Assets/icon-256.png" width="96" alt="SysPulse icon"></p>
 
 # SysPulse
 
@@ -24,9 +24,29 @@ A neofetch-style system info panel plus a live resource monitor for Windows 10/1
 
 **Command line:** `SysPulse.exe --tray` starts hidden in the tray (the installer's "start when I sign in" option uses this). Launching SysPulse while it's already running just brings the existing window to the front.
 
+## Monitor other PCs on your network
+
+Install **SysPulse Agent** on each PC you want to watch. It runs as a background Windows service, starts with Windows, and works even when nobody is signed in. Then add those PCs in SysPulse; each appears in the machine bar at the top with a live status dot and CPU/RAM. Click one to see its full dashboard.
+
+1. On the other PC, run `SysPulse-Agent-Setup-<version>.exe` (needs administrator rights). The last page shows its **address** and a **pairing code**. You can show them again later from Start ▸ *SysPulse Agent - Show pairing code*.
+2. In SysPulse, click **+ Add PC** and enter the address and code.
+3. To stop monitoring a PC, right-click its chip ▸ **Remove this PC**.
+
+**Requirements:** both PCs on the same local network, and the agent PC's network set to **Private** in Windows (Settings ▸ Network & internet ▸ your connection ▸ *Private network*). The agent doesn't accept connections on Public networks.
+
+**Security**
+- **Read-only.** The agent only reports readings; nothing can be changed remotely.
+- **Encrypted.** All traffic is HTTPS. The agent makes its own certificate, and SysPulse pins its fingerprint when you pair, so another device on the network can't impersonate it.
+- **Pairing code required** on every request. It's 120 random bits, and wrong codes are slowed down. To issue a new code (which disconnects existing viewers), run `"C:\Program Files\SysPulse Agent\SysPulse.Agent.exe" --reset-code` as administrator.
+- **Local network only.** The firewall rule allows only TCP port 47613, only for the agent, only from your local subnet, and only on Private/Domain networks. The agent also rejects non-private addresses itself.
+- **Stored safely.** The agent's code and certificate key are in `%ProgramData%\SysPulse Agent`, readable only by Administrators and SYSTEM. On the viewer PC, saved codes are encrypted with Windows DPAPI for your user account.
+- The agent runs as LocalSystem so it can see every process (as Task Manager does for an administrator).
+
+**Footprint:** with nobody watching, the agent pauses sampling (about 0.2% of one CPU core, ~95 MB RAM). While watched it samples once a second and serves all viewers from the same reading. SysPulse also stops polling remote PCs while its window is hidden.
+
 ## Install
 
-Download `SysPulse-Setup-<version>.exe` from [Releases](https://github.com/destruction4u/SysPulse/releases) and run it.
+Download `SysPulse-Setup-<version>.exe` (and `SysPulse-Agent-Setup-<version>.exe` for PCs you want to monitor remotely) from [Releases](https://github.com/destruction4u/SysPulse/releases) and run it.
 
 - Installs for the current user by default, without an admin prompt. You can choose to install for all users instead.
 - Bundles .NET, so nothing else needs to be installed.
@@ -42,16 +62,22 @@ Requirements: [.NET 10 SDK](https://dotnet.microsoft.com/download) and, for the 
 Run the app:
 
 ```powershell
-dotnet run -c Release
+dotnet run --project src\SysPulse -c Release
 ```
 
-Build the standalone exe and the installer into `dist\`:
+Run the agent in a console for testing (no admin needed; uses a throwaway data folder and prints nothing until a viewer connects):
+
+```powershell
+dotnet run --project src\SysPulse.Agent -c Release -- --data-dir $env:TEMP\syspulse-agent-test
+```
+
+Build both standalone exes and both installers into `dist\`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-To release a new version, bump `<Version>` in `SysPulse.csproj` and run `build.ps1`. The installer picks up the version automatically.
+To release a new version, bump `<Version>` in `src\SysPulse\SysPulse.csproj` (and/or `src\SysPulse.Agent\SysPulse.Agent.csproj`) and run `build.ps1`. The installers pick up the versions automatically.
 
 > **Keep the project in a short path** (e.g. `C:\dev\SysPulse`). When the build's intermediate paths
 > go over Windows' 260-character limit, the WPF compiler silently leaves out `MainWindow.xaml`, and the
@@ -61,16 +87,27 @@ To release a new version, bump `<Version>` in `SysPulse.csproj` and run `build.p
 
 | Path | What it does |
 |---|---|
-| `Services/StaticInfo.cs` | One-time hardware/OS facts (WMI + registry) |
-| `Services/SystemMonitor.cs` | Live sampling: perf counters, network, processes, battery |
-| `Services/Native.cs` | Win32 calls (memory, power, dark title bar) and formatting helpers |
-| `ViewModels/MainViewModel.cs` | Turns samples into text and graph history for the UI |
+| **`src/SysPulse.Core/`** | Shared by the app and the agent |
+| `Monitoring/StaticInfo.cs` | One-time hardware/OS facts (WMI + registry) |
+| `Monitoring/SystemMonitor.cs` | Live sampling: perf counters, network, processes, battery |
+| `Monitoring/Native.cs` | Win32 calls and formatting helpers |
+| `Remote/AgentClient.cs` | HTTPS client with certificate pinning |
+| `Remote/PairingCode.cs`, `AgentProtocol.cs` | Pairing codes and the wire format |
+| **`src/SysPulse.Agent/`** | The Windows service |
+| `Program.cs` | HTTPS endpoints, local-network + pairing-code checks |
+| `SampleCache.cs` | Samples once a second while watched, idles otherwise |
+| `Cli.cs` | `--install`, `--uninstall`, `--pairing`, `--reset-code` (service, firewall, setup) |
+| `AgentConfig.cs` | Pairing code + self-signed certificate in a locked-down ProgramData folder |
+| **`src/SysPulse/`** | The desktop app |
+| `MainWindow.xaml` | Machine bar, dashboard layout and styling |
+| `AddMachineWindow.xaml` | Pairing dialog |
+| `ViewModels/` | Dashboard (per machine), machine bar and window state |
+| `Services/` | Settings, saved machines (DPAPI), tray icon |
 | `Controls/Sparkline.cs` | The scrolling line graphs |
-| `MainWindow.xaml` | Layout and styling |
-| `Assets/` | App icon (`.ico` plus a 256 px PNG) |
+| `Assets/` | Icon (`.ico` plus a 256 px PNG), shared by everything |
 | `tools/make-icon.ps1` | Regenerates the icon from vector drawing code |
-| `installer/SysPulse.iss` | Inno Setup installer script |
-| `build.ps1` | Publishes the app and builds the installer |
+| `installer/*.iss` | Inno Setup scripts for the app and the agent |
+| `build.ps1` | Publishes both and builds both installers |
 
 ## License
 

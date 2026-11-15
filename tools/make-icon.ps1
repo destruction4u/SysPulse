@@ -1,11 +1,11 @@
-# Generates Assets\SysPulse.ico (16-256 px) and Assets\icon-256.png.
+# Generates src\SysPulse\Assets\SysPulse.ico (16-256 px) and icon-256.png (shared by the app, agent and installers).
 # Each size is drawn from vectors (not downscaled) so small sizes stay crisp.
 # Usage:  powershell -ExecutionPolicy Bypass -File tools\make-icon.ps1
 Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path $PSScriptRoot -Parent
-$assets = Join-Path $root 'Assets'
+$assets = Join-Path $root 'src\SysPulse\Assets'
 New-Item -ItemType Directory -Force $assets | Out-Null
 
 function New-RoundRect([single]$x, [single]$y, [single]$w, [single]$h, [single]$r) {
