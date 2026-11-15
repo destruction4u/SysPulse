@@ -65,3 +65,7 @@ To release a new version, bump `<Version>` in `SysPulse.csproj` and run `build.p
 | `tools/make-icon.ps1` | Regenerates the icon from vector drawing code |
 | `installer/SysPulse.iss` | Inno Setup installer script |
 | `build.ps1` | Publishes the app and builds the installer |
+
+## License
+
+[MIT](LICENSE)
