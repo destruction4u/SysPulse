@@ -1,0 +1,215 @@
+<Window x:Class="SysPulse.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="clr-namespace:SysPulse.Controls"
+        xmlns:vm="clr-namespace:SysPulse.ViewModels"
+        Title="SysPulse" Icon="Assets/SysPulse.ico" Width="1240" Height="800" MinWidth="980" MinHeight="640"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Fg}"
+        FontFamily="Segoe UI" FontSize="13"
+        UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+
+    <Window.Resources>
+        <!-- One dashboard tile -->
+        <DataTemplate x:Key="MetricTile" DataType="{x:Type vm:MetricVM}">
+            <Border Style="{StaticResource Card}" Margin="6">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Ellipse Width="8" Height="8" Fill="{Binding Color}" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Title}" Style="{StaticResource CardTitle}"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Sub2}" Style="{StaticResource MutedText}" FontSize="11"
+                                   HorizontalAlignment="Right" Margin="10,0,0,0" ToolTip="{Binding Sub2}"/>
+                    </Grid>
+                    <StackPanel Grid.Row="1" Margin="0,6,0,6">
+                        <TextBlock Text="{Binding Value}" FontSize="26" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding Sub}" Style="{StaticResource MutedText}"/>
+                    </StackPanel>
+                    <c:Sparkline Grid.Row="2" MinHeight="48"
+                                 Values="{Binding History}" Values2="{Binding History2}"
+                                 Stroke="{Binding Color}" Stroke2="{Binding Color2}"
+                                 Maximum="{Binding Max}"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="14">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="470"/>
+            <ColumnDefinition Width="8"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ============ Left: neofetch-style panel ============ -->
+        <Border Style="{StaticResource Card}" Margin="6" Padding="18,16">
+            <DockPanel>
+                <!-- footer -->
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <StackPanel.Resources>
+                            <Style TargetType="Rectangle">
+                                <Setter Property="Width" Value="24"/>
+                                <Setter Property="Height" Value="14"/>
+                                <Setter Property="Margin" Value="0,0,3,0"/>
+                                <Setter Property="RadiusX" Value="2"/>
+                                <Setter Property="RadiusY" Value="2"/>
+                            </Style>
+                        </StackPanel.Resources>
+                        <Rectangle Fill="#3B4252"/><Rectangle Fill="#F07178"/><Rectangle Fill="#69F0AE"/><Rectangle Fill="#FFD54F"/>
+                        <Rectangle Fill="#4FC3F7"/><Rectangle Fill="#B388FF"/><Rectangle Fill="#80DEEA"/><Rectangle Fill="#E6E8EE"/>
+                    </StackPanel>
+                    <DockPanel>
+                        <ToggleButton DockPanel.Dock="Right" Content="📌 Always on top"
+                                      IsChecked="{Binding Topmost, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                        <Button Content="Copy info" Click="CopyInfo_Click" HorizontalAlignment="Left"/>
+                    </DockPanel>
+                </StackPanel>
+
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Logo}" FontFamily="{StaticResource Mono}" FontSize="9"
+                                   LineStackingStrategy="BlockLineHeight" LineHeight="10"
+                                   Foreground="{StaticResource Accent}" Margin="0,4,16,0" VerticalAlignment="Top"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Title}" FontFamily="{StaticResource Mono}" FontSize="15"
+                                       FontWeight="Bold" Foreground="{StaticResource Accent}" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock Text="{Binding Separator}" FontFamily="{StaticResource Mono}" Foreground="{StaticResource Muted}"/>
+                            <TextBlock Text="{Binding Status}" Style="{StaticResource MutedText}" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding InfoLines}" Margin="0,16,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:InfoLine}">
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Key}" FontFamily="{StaticResource Mono}" FontSize="12.5"
+                                               Foreground="{StaticResource Accent}" FontWeight="SemiBold"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontFamily="{StaticResource Mono}"
+                                               FontSize="12.5" TextWrapping="Wrap"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="STORAGE" Style="{StaticResource CardTitle}" Margin="0,18,0,6"/>
+                    <ItemsControl ItemsSource="{Binding Drives}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:DriveRow}">
+                                <StackPanel Margin="0,0,0,10">
+                                    <DockPanel Margin="0,0,0,4">
+                                        <TextBlock Text="{Binding Detail}" Style="{StaticResource MutedText}" DockPanel.Dock="Right"/>
+                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                    <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" Foreground="#FF8A65"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ============ Right: live monitors ============ -->
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="2*" MinHeight="330"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="3*"/>
+            </Grid.RowDefinitions>
+
+            <ItemsControl ItemsSource="{Binding Metrics}" ItemTemplate="{StaticResource MetricTile}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="3" Rows="2"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+
+            <!-- per-thread load -->
+            <Border Grid.Row="1" Style="{StaticResource Card}" Margin="6">
+                <StackPanel>
+                    <TextBlock Text="CPU THREADS" Style="{StaticResource CardTitle}" Margin="0,0,0,8"/>
+                    <ItemsControl ItemsSource="{Binding Cores}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Rows="1"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:CoreVM}">
+                                <StackPanel Margin="2,0" ToolTip="{Binding Tip}">
+                                    <Border Height="54" Background="{StaticResource Track}" CornerRadius="3">
+                                        <Border VerticalAlignment="Bottom" Height="{Binding BarHeight}"
+                                                Background="{StaticResource Accent}" CornerRadius="3"/>
+                                    </Border>
+                                    <TextBlock Text="{Binding Label}" FontSize="9" Foreground="{StaticResource Muted}"
+                                               HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- top processes -->
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="6">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="170"/>
+                            <ColumnDefinition Width="100"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="TOP PROCESSES" Style="{StaticResource CardTitle}"/>
+                        <TextBlock Grid.Column="1" Text="PID" Style="{StaticResource CardTitle}" HorizontalAlignment="Right"/>
+                        <TextBlock Grid.Column="2" Text="CPU" Style="{StaticResource CardTitle}" Margin="16,0,0,0"/>
+                        <TextBlock Grid.Column="3" Text="MEMORY" Style="{StaticResource CardTitle}" HorizontalAlignment="Right"/>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Processes}" ClipToBounds="True">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ProcRow}">
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="170"/>
+                                        <ColumnDefinition Width="100"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Pid}" FontFamily="{StaticResource Mono}"
+                                               Foreground="{StaticResource Muted}" HorizontalAlignment="Right"/>
+                                    <DockPanel Grid.Column="2" Margin="16,0,0,0">
+                                        <TextBlock Text="{Binding CpuText}" FontFamily="{StaticResource Mono}" Width="52"
+                                                   DockPanel.Dock="Right" TextAlignment="Right"/>
+                                        <ProgressBar Value="{Binding Cpu, Mode=OneWay}" Maximum="100" Height="5" VerticalAlignment="Center"/>
+                                    </DockPanel>
+                                    <TextBlock Grid.Column="3" Text="{Binding MemText}" FontFamily="{StaticResource Mono}"
+                                               HorizontalAlignment="Right"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
