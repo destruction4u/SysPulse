@@ -6,9 +6,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- WinForms only for the notification-area icon (NotifyIcon); WPF has no tray API -->
+    <UseWindowsForms>true</UseWindowsForms>
 
     <ApplicationIcon>Assets\SysPulse.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Product>SysPulse</Product>
     <AssemblyTitle>SysPulse</AssemblyTitle>
     <Description>System info and live resource monitor for Windows</Description>
@@ -18,6 +20,13 @@
   <ItemGroup>
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="11.0.0" />
     <PackageReference Include="System.Management" Version="11.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Keep WinForms/GDI+ names out of global scope so they don't clash with WPF types
+         (Application, Brush, Color, Point...). TrayIcon.cs imports them explicitly. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
   </ItemGroup>
 
   <ItemGroup>

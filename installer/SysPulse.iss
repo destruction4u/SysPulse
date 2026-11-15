@@ -39,8 +39,9 @@ WizardStyle=modern
 Compression=lzma2/ultra64
 SolidCompression=yes
 
-; Close a running SysPulse before upgrading/uninstalling
-CloseApplications=yes
+; Close a running SysPulse before upgrading/uninstalling. "force" because the app may be hidden in the tray
+; (it exits cleanly on the session-end message, but force guarantees the files are released).
+CloseApplications=force
 RestartApplications=no
 
 OutputDir=..\dist
@@ -61,7 +62,35 @@ Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreve
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
-Name: "{autostartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: startup
+Name: "{autostartup}\{#AppName}"; Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Tasks: startup
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// SysPulse can run hidden in the tray with no window, which Windows' "close app" request
+// (Restart Manager) can't reach. So ask it to quit via its own "--exit" command, which
+// signals the running copy and waits until it has exited. 1.0.x predates --exit (and
+// always has a window, so Restart Manager handles it).
+procedure CloseRunningSysPulse();
+var
+  Exe, Ver: String;
+  ResultCode: Integer;
+begin
+  Exe := ExpandConstant('{app}\{#AppExe}');
+  if not FileExists(Exe) then Exit;
+  if GetVersionNumbersString(Exe, Ver) and (Pos('1.0.', Ver) = 1) then Exit;
+  Exec(Exe, '--exit', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  CloseRunningSysPulse();
+  Result := '';
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  CloseRunningSysPulse();
+  Result := True;
+end;

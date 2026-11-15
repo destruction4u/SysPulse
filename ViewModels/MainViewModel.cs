@@ -106,6 +106,7 @@ public sealed class MainViewModel : ObservableObject
     private IReadOnlyList<ProcRow> _processes = [];
     private IReadOnlyList<DriveRow> _drives = [];
     private string _status = "Starting…";
+    private int _processCount;
 
     public MainViewModel() => Metrics = [Cpu, Memory, Gpu, Network, Disk, Power];
 
@@ -196,9 +197,11 @@ public sealed class MainViewModel : ObservableObject
         }
         for (int i = 0; i < s.CorePercents.Length; i++) Cores[i].Value = s.CorePercents[i];
 
-        Processes = s.TopProcesses
-            .Select(p => new ProcRow(p.Name, p.Pid, p.Cpu, $"{p.Cpu:0.0}%", Fmt.Bytes(p.Memory)))
-            .ToList();
+        if (s.TopProcesses is { } top)
+            Processes = top
+                .Select(p => new ProcRow(p.Name, p.Pid, p.Cpu, $"{p.Cpu:0.0}%", Fmt.Bytes(p.Memory)))
+                .ToList();
+        if (s.ProcessCount is int n) _processCount = n;
 
         Drives = s.Drives
             .Select(d =>
@@ -210,7 +213,7 @@ public sealed class MainViewModel : ObservableObject
             .ToList();
 
         InfoLines = BuildInfo(info, s, memPct);
-        Status = $"{s.ProcessCount} processes  ·  updated {DateTime.Now:T}";
+        Status = $"{_processCount} processes  ·  updated {DateTime.Now:T}";
     }
 
     private static List<InfoLine> BuildInfo(StaticInfo info, Sample s, double memPct)

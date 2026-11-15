@@ -14,7 +14,7 @@ public sealed record Sample(
     double NetDown, double NetUp,
     double? DiskActive, double? DiskRead, double? DiskWrite,
     double? GpuPercent,
-    IReadOnlyList<ProcSample> TopProcesses, int ProcessCount,
+    IReadOnlyList<ProcSample>? TopProcesses, int? ProcessCount, // null when skipped (window hidden)
     IReadOnlyList<DriveSample> Drives,
     BatterySample? Battery, TimeSpan Uptime);
 
@@ -29,11 +29,14 @@ public sealed class SystemMonitor : IDisposable
 
     private readonly PerformanceCounter? _cpuTotal, _cpuPerf, _diskIdle, _diskRead, _diskWrite;
     private readonly PerformanceCounter[] _cores = [];
-    private readonly Dictionary<string, PerformanceCounter> _gpu = [];
+    private PerformanceCounterCategory? _gpuCategory;
+    private Dictionary<string, CounterSample> _gpuPrev = [];
     private bool _gpuSupported = true;
 
     private long _lastIdle, _lastKernel, _lastUser;           // CPU fallback
     private long _lastRx, _lastTx; private long _lastNetTicks; // network
+    private NetworkInterface[] _netAdapters = [];
+    private long _netListTicks;
     private Dictionary<int, (TimeSpan Cpu, string Name)> _lastProc = [];
     private long _lastProcTicks;
     private IReadOnlyList<DriveSample> _drives = [];
@@ -62,13 +65,16 @@ public sealed class SystemMonitor : IDisposable
         catch { /* per-core view just stays empty */ }
 
         Native.GetSystemTimes(out _lastIdle, out _lastKernel, out _lastUser);
-        (_lastRx, _lastTx) = ReadNetTotals();
+        (_lastRx, _lastTx, _) = ReadNetTotals();
         _lastNetTicks = _lastProcTicks = Stopwatch.GetTimestamp();
-        RefreshGpuInstances();
+        ReadGpu(); // first snapshot = baseline
         Thread.Sleep(500); // give rate counters a baseline interval before the first sample
     }
 
-    public Sample Sample()
+    /// <param name="includeProcesses">
+    /// Walking every process is the most expensive part of a sample; skip it while the window is hidden.
+    /// </param>
+    public Sample Sample(bool includeProcesses = true)
     {
         _tick++;
 
@@ -83,20 +89,26 @@ public sealed class SystemMonitor : IDisposable
 
         // ---- Network
         long now = Stopwatch.GetTimestamp();
-        var (rx, tx) = ReadNetTotals();
+        var (rx, tx, adaptersChanged) = ReadNetTotals();
         double netSecs = Math.Max(Stopwatch.GetElapsedTime(_lastNetTicks, now).TotalSeconds, 0.001);
-        double down = Math.Max(0, (rx - _lastRx) / netSecs), up = Math.Max(0, (tx - _lastTx) / netSecs);
+        double down = 0, up = 0;
+        if (!adaptersChanged) // otherwise the totals jump by a whole adapter's lifetime bytes
+        {
+            down = Math.Max(0, (rx - _lastRx) / netSecs);
+            up = Math.Max(0, (tx - _lastTx) / netSecs);
+        }
         (_lastRx, _lastTx, _lastNetTicks) = (rx, tx, now);
 
         // ---- Disk
         double? diskActive = Read(_diskIdle) is double idle ? Math.Clamp(100 - idle, 0, 100) : null;
 
         // ---- GPU (instances come and go with processes; resync every 5 s)
-        if (_tick % 5 == 0) RefreshGpuInstances();
         double? gpu = ReadGpu();
 
         // ---- Processes, drives, battery
-        var (top, count) = SampleProcesses();
+        IReadOnlyList<ProcSample>? top = null;
+        int? count = null;
+        if (includeProcesses) (top, count) = SampleProcesses();
         if (_tick % 5 == 1) _drives = ReadDrives();
 
         return new Sample(
@@ -116,51 +128,71 @@ public sealed class SystemMonitor : IDisposable
         return dTotal > 0 ? (1.0 - (double)dIdle / dTotal) * 100 : 0;
     }
 
-    private static (long Rx, long Tx) ReadNetTotals()
+    /// <summary>
+    /// Total bytes across active adapters. Enumerating adapters and checking their status is
+    /// slow (~15-45 ms with many virtual adapters), so the active list is cached for 10 s;
+    /// reading one adapter's counters is ~1 ms.
+    /// </summary>
+    /// <returns>Changed = the set of adapters changed, so the totals aren't comparable with last time.</returns>
+    private (long Rx, long Tx, bool Changed) ReadNetTotals()
     {
+        bool changed = false;
+        if (_netAdapters.Length == 0 || Stopwatch.GetElapsedTime(_netListTicks).TotalSeconds >= 10)
+        {
+            string[] before = _netAdapters.Select(a => a.Id).ToArray();
+            try
+            {
+                _netAdapters = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(ni => ni.OperationalStatus == OperationalStatus.Up
+                              && ni.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel))
+                    .ToArray();
+            }
+            catch { _netAdapters = []; }
+            _netListTicks = Stopwatch.GetTimestamp();
+            changed = !before.SequenceEqual(_netAdapters.Select(a => a.Id));
+        }
+
         long rx = 0, tx = 0;
-        try
+        foreach (var ni in _netAdapters)
         {
-            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (ni.OperationalStatus != OperationalStatus.Up) continue;
-                if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
-                try { var s = ni.GetIPStatistics(); rx += s.BytesReceived; tx += s.BytesSent; } catch { }
-            }
+            try { var s = ni.GetIPStatistics(); rx += s.BytesReceived; tx += s.BytesSent; }
+            catch { changed = true; } // adapter vanished; list refreshes on the next cycle
         }
-        catch { }
-        return (rx, tx);
+        return (rx, tx, changed);
     }
 
-    private void RefreshGpuInstances()
-    {
-        if (!_gpuSupported) return;
-        try
-        {
-            var names = new PerformanceCounterCategory("GPU Engine").GetInstanceNames()
-                .Where(n => n.EndsWith("engtype_3D", StringComparison.OrdinalIgnoreCase))
-                .ToHashSet();
-            foreach (var gone in _gpu.Keys.Where(k => !names.Contains(k)).ToList())
-            {
-                _gpu[gone].Dispose();
-                _gpu.Remove(gone);
-            }
-            foreach (var n in names.Where(n => !_gpu.ContainsKey(n)))
-                if (TryCounter("GPU Engine", "Utilization Percentage", n) is { } c) _gpu[n] = c;
-        }
-        catch { _gpuSupported = false; }
-    }
-
+    /// <summary>
+    /// GPU 3D load = sum of every process's 3D-engine utilization. There are hundreds of
+    /// per-process instances, so instead of one PerformanceCounter each (~50 ms per read, plus
+    /// ~300 ms to re-list instances) we snapshot the whole category in one call (~7 ms) and
+    /// compute the rate ourselves from consecutive raw samples.
+    /// </summary>
     private double? ReadGpu()
     {
         if (!_gpuSupported) return null;
-        double sum = 0;
-        foreach (var (name, c) in _gpu.ToList())
+        try
         {
-            try { sum += c.NextValue(); }
-            catch { c.Dispose(); _gpu.Remove(name); } // process exited
+            _gpuCategory ??= new PerformanceCounterCategory("GPU Engine");
+            var data = _gpuCategory.ReadCategory()["Utilization Percentage"];
+            if (data == null) return null;
+
+            var next = new Dictionary<string, CounterSample>(_gpuPrev.Count);
+            double sum = 0;
+            foreach (InstanceData d in data.Values)
+            {
+                if (!d.InstanceName.EndsWith("engtype_3D", StringComparison.OrdinalIgnoreCase)) continue;
+                next[d.InstanceName] = d.Sample;
+                if (_gpuPrev.TryGetValue(d.InstanceName, out var prev))
+                    sum += CounterSample.Calculate(prev, d.Sample);
+            }
+            _gpuPrev = next; // instances for exited processes simply drop out
+            return Math.Clamp(sum, 0, 100);
         }
-        return Math.Clamp(sum, 0, 100);
+        catch
+        {
+            _gpuSupported = false; // no GPU counters on this machine (e.g. some VMs)
+            return null;
+        }
     }
 
     private (IReadOnlyList<ProcSample> Top, int Count) SampleProcesses()
@@ -239,8 +271,7 @@ public sealed class SystemMonitor : IDisposable
 
     public void Dispose()
     {
-        foreach (var c in new[] { _cpuTotal, _cpuPerf, _diskIdle, _diskRead, _diskWrite }.Concat(_cores).Concat(_gpu.Values))
+        foreach (var c in new[] { _cpuTotal, _cpuPerf, _diskIdle, _diskRead, _diskWrite }.Concat(_cores))
             c?.Dispose();
-        _gpu.Clear();
     }
 }

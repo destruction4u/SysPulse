@@ -18,6 +18,12 @@ A neofetch-style system info panel plus a live resource monitor for Windows 10/1
 
 **Always on top** keeps it floating over other windows.
 
+**Tray mode:** closing the window keeps SysPulse running in the notification area. The tray icon is a live CPU mini-graph (cyan when calm, amber when busy, red when maxed out). Hover over it for CPU, RAM and network numbers. Left-click to reopen the window; right-click for settings or **Exit**. You can turn this off with the **Close to tray** button. Windows 11 puts new tray icons in the hidden-icons overflow (**^**); drag it onto the taskbar to keep it visible.
+
+**Settings:** update speed (0.5 s / 1 s / 2 s), always on top, close to tray and the window position are remembered between runs. They're stored in `%APPDATA%\SysPulse\settings.json`.
+
+**Command line:** `SysPulse.exe --tray` starts hidden in the tray (the installer's "start when I sign in" option uses this). Launching SysPulse while it's already running just brings the existing window to the front.
+
 ## Install
 
 Download `SysPulse-Setup-<version>.exe` from [Releases](https://github.com/destruction4u/SysPulse/releases) and run it.

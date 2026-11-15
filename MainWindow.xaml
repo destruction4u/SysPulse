@@ -68,6 +68,17 @@
                         <Rectangle Fill="#3B4252"/><Rectangle Fill="#F07178"/><Rectangle Fill="#69F0AE"/><Rectangle Fill="#FFD54F"/>
                         <Rectangle Fill="#4FC3F7"/><Rectangle Fill="#B388FF"/><Rectangle Fill="#80DEEA"/><Rectangle Fill="#E6E8EE"/>
                     </StackPanel>
+                    <DockPanel Margin="0,0,0,8">
+                        <TextBlock Text="UPDATE EVERY" Style="{StaticResource CardTitle}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <ToggleButton x:Name="CloseToTrayToggle" DockPanel.Dock="Right" Content="Close to tray"
+                                      Checked="CloseToTray_Changed" Unchecked="CloseToTray_Changed"
+                                      ToolTip="When on, closing the window keeps SysPulse running in the notification area"/>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="Speed500" GroupName="Speed" Content="0.5s" Tag="500" Checked="Speed_Checked"/>
+                            <RadioButton x:Name="Speed1000" GroupName="Speed" Content="1s" Tag="1000" Checked="Speed_Checked" Margin="4,0"/>
+                            <RadioButton x:Name="Speed2000" GroupName="Speed" Content="2s" Tag="2000" Checked="Speed_Checked"/>
+                        </StackPanel>
+                    </DockPanel>
                     <DockPanel>
                         <ToggleButton DockPanel.Dock="Right" Content="📌 Always on top"
                                       IsChecked="{Binding Topmost, RelativeSource={RelativeSource AncestorType=Window}}"/>
