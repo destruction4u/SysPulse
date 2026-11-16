@@ -1,5 +1,6 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
+using SysPulse.Core;
 using SysPulse.Services;
 
 namespace SysPulse;

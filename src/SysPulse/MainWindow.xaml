@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:SysPulse.Controls"
         xmlns:vm="clr-namespace:SysPulse.ViewModels"
-        Title="SysPulse" Icon="Assets/SysPulse.ico" Width="1240" Height="800" MinWidth="980" MinHeight="640"
+        Title="SysPulse" Icon="Assets/SysPulse.ico" Width="1240" Height="860" MinWidth="980" MinHeight="680"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource Bg}" Foreground="{StaticResource Fg}"
         FontFamily="Segoe UI" FontSize="13"
@@ -41,9 +41,76 @@
                 </Grid>
             </Border>
         </DataTemplate>
+
+        <!-- Machine bar -->
+        <ContextMenu x:Key="MachineMenu" x:Shared="False">
+            <MenuItem Header="Remove this PC" Click="RemoveMachine_Click"/>
+        </ContextMenu>
+
+        <Style x:Key="MachineChip" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="Margin" Value="0,0,8,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="b" Background="{StaticResource CardBg}" BorderBrush="{StaticResource CardBorder}"
+                                BorderThickness="1" CornerRadius="8" Padding="12,7" MinWidth="150">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="b" Property="Background" Value="#1C2029"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}"/>
+                                <Setter TargetName="b" Property="Background" Value="#17222B"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate DataType="{x:Type vm:MachineViewModel}">
+            <StackPanel Orientation="Horizontal" ToolTip="{Binding Tooltip}" Background="Transparent">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="ContextMenu" Value="{StaticResource MachineMenu}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsLocal}" Value="True">
+                                <Setter Property="ContextMenu" Value="{x:Null}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <Ellipse Width="8" Height="8" Fill="{Binding StateBrush}" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                <StackPanel>
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="180"/>
+                    <TextBlock Text="{Binding Summary}" Style="{StaticResource MutedText}" FontSize="11"/>
+                </StackPanel>
+            </StackPanel>
+        </DataTemplate>
     </Window.Resources>
 
-    <Grid Margin="14">
+    <DockPanel Margin="14,12,14,14">
+    <DockPanel DockPanel.Dock="Top" Margin="6,0,6,2">
+        <Button DockPanel.Dock="Right" Content="+ Add PC" Click="AddMachine_Click" VerticalAlignment="Top" Margin="8,4,0,0"
+                ToolTip="Monitor another PC on your network (it needs SysPulse Agent installed)"/>
+        <ListBox ItemsSource="{Binding Machines}" SelectedItem="{Binding Selected}"
+                 ItemContainerStyle="{StaticResource MachineChip}"
+                 Background="Transparent" BorderThickness="0" Padding="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel/>
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+        </ListBox>
+    </DockPanel>
+
+    <!-- Everything below shows the selected machine -->
+    <Grid DataContext="{Binding Selected.Dashboard}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="470"/>
             <ColumnDefinition Width="8"/>
@@ -94,7 +161,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{Binding Logo}" FontFamily="{StaticResource Mono}" FontSize="9"
                                    LineStackingStrategy="BlockLineHeight" LineHeight="10"
-                                   Foreground="{StaticResource Accent}" Margin="0,4,16,0" VerticalAlignment="Top"/>
+                                   Foreground="{Binding LogoBrush}" Margin="0,4,16,0" VerticalAlignment="Top"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{Binding Title}" FontFamily="{StaticResource Mono}" FontSize="15"
                                        FontWeight="Bold" Foreground="{StaticResource Accent}" TextTrimming="CharacterEllipsis"/>
@@ -223,4 +290,5 @@
             </Border>
         </Grid>
     </Grid>
+    </DockPanel>
 </Window>

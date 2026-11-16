@@ -1,0 +1,36 @@
+<Window x:Class="SysPulse.AddMachineWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add a PC" Width="460" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Fg}"
+        FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True">
+    <StackPanel Margin="22,18,22,20">
+        <TextBlock Text="Add a PC to monitor" FontSize="18" FontWeight="SemiBold"/>
+        <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,16">
+            Install SysPulse Agent on the other PC. When setup finishes it shows an address and a pairing code.
+            <LineBreak/><LineBreak/>
+            To see them again later:
+            <LineBreak/>• Windows: Start ▸ "SysPulse Agent - Show pairing code"
+            <LineBreak/>• Linux: <Run FontFamily="{StaticResource Mono}">sudo /opt/syspulse-agent/syspulse-agent --pairing</Run>
+        </TextBlock>
+
+        <TextBlock Text="ADDRESS" Style="{StaticResource CardTitle}" Margin="0,0,0,5"/>
+        <TextBox x:Name="AddressBox" ToolTip="IP address or computer name, e.g. 192.168.1.50 or OFFICE-PC"/>
+
+        <TextBlock Text="PAIRING CODE" Style="{StaticResource CardTitle}" Margin="0,14,0,5"/>
+        <TextBox x:Name="CodeBox" FontFamily="{StaticResource Mono}" CharacterCasing="Upper"
+                 ToolTip="24 characters; dashes and spaces are optional"/>
+
+        <TextBlock Text="NAME (OPTIONAL)" Style="{StaticResource CardTitle}" Margin="0,14,0,5"/>
+        <TextBox x:Name="NameBox" ToolTip="Shown in the machine bar. Defaults to the PC's computer name."/>
+
+        <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,14,0,0" MinHeight="18"
+                   Foreground="{StaticResource Muted}"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Cancel" IsCancel="True" Margin="0,0,8,0" MinWidth="80"/>
+            <Button x:Name="ConnectButton" Content="Connect" IsDefault="True" Click="Connect_Click" MinWidth="96"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

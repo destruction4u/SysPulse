@@ -3,7 +3,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows.Media;
-using SysPulse.Services;
+using SysPulse.Core;
 
 namespace SysPulse.ViewModels;
 
@@ -79,7 +79,8 @@ public sealed class CoreVM(int index) : ObservableObject
     }
 }
 
-public sealed class MainViewModel : ObservableObject
+/// <summary>Everything one machine's dashboard shows (this PC, or a remote PC via its agent).</summary>
+public sealed class DashboardViewModel : ObservableObject
 {
     private static Brush B(string hex)
     {
@@ -108,7 +109,7 @@ public sealed class MainViewModel : ObservableObject
     private string _status = "Starting…";
     private int _processCount;
 
-    public MainViewModel() => Metrics = [Cpu, Memory, Gpu, Network, Disk, Power];
+    public DashboardViewModel() => Metrics = [Cpu, Memory, Gpu, Network, Disk, Power];
 
     public string Title { get => _title; private set => Set(ref _title, value); }
     public string Separator => new('─', Title.Length);
@@ -117,10 +118,33 @@ public sealed class MainViewModel : ObservableObject
     public IReadOnlyList<DriveRow> Drives { get => _drives; private set => Set(ref _drives, value); }
     public string Status { get => _status; set => Set(ref _status, value); }
 
-    /// <summary>Windows-style four-pane logo drawn in block characters, neofetch style.</summary>
-    public string Logo { get; } = BuildLogo();
+    private static readonly Brush WindowsLogoBrush = B("#4FC3F7"), LinuxLogoBrush = B("#FFD54F");
+    private static readonly string WindowsLogo = BuildWindowsLogo();
 
-    private static string BuildLogo()
+    /// <summary>A penguin in block characters (Linux machines), neofetch style.</summary>
+    private const string LinuxLogo = """
+              ▄▄████▄▄
+             ██▀ ██ ▀██
+             ██▄▄▀▀▄▄██
+            ▄██▀▀▀▀▀▀██▄
+           ██▀        ▀██
+          ██            ██
+          ██            ██
+           ██▄        ▄██
+         ▄▄▄██▄▄    ▄▄██▄▄▄
+         ▀▀▀▀▀▀▀    ▀▀▀▀▀▀▀
+        """;
+
+    private string _logo = WindowsLogo;
+    private Brush _logoBrush = WindowsLogoBrush;
+
+    /// <summary>The OS logo in block characters: Windows panes or a Linux penguin.</summary>
+    public string Logo { get => _logo; private set => Set(ref _logo, value); }
+    public Brush LogoBrush { get => _logoBrush; private set => Set(ref _logoBrush, value); }
+
+    private bool IsLinux => _info?.Platform == "Linux";
+
+    private static string BuildWindowsLogo()
     {
         string pane = new('█', 10);
         string row = pane + "  " + pane;
@@ -137,12 +161,16 @@ public sealed class MainViewModel : ObservableObject
         Title = $"{info.User}@{info.Host}";
         Raise(nameof(Separator));
         Gpu.Sub2 = info.Gpus.FirstOrDefault() ?? "";
+        Logo = IsLinux ? LinuxLogo : WindowsLogo;
+        LogoBrush = IsLinux ? LinuxLogoBrush : WindowsLogoBrush;
         Status = "Starting monitors…";
     }
 
+    public bool HasInfo => _info != null;
+
     public void Apply(Sample s)
     {
-        var info = _info!;
+        if (_info is not { } info) return; // static info must arrive first
 
         // CPU
         Cpu.Value = $"{s.CpuPercent:0}%";
@@ -154,12 +182,15 @@ public sealed class MainViewModel : ObservableObject
         double memPct = s.MemTotal > 0 ? 100.0 * s.MemUsed / s.MemTotal : 0;
         Memory.Value = $"{memPct:0}%";
         Memory.Sub = $"{Fmt.Bytes(s.MemUsed)} / {Fmt.Bytes(s.MemTotal)}";
-        Memory.Sub2 = $"Commit {Fmt.Bytes(s.CommitUsed)} / {Fmt.Bytes(s.CommitTotal)}";
+        Memory.Sub2 = IsLinux
+            ? (s.CommitTotal > 0 ? $"Swap {Fmt.Bytes(s.CommitUsed)} / {Fmt.Bytes(s.CommitTotal)}" : "No swap")
+            : $"Commit {Fmt.Bytes(s.CommitUsed)} / {Fmt.Bytes(s.CommitTotal)}";
         Memory.History = _memH.Push(memPct);
 
         // GPU
         Gpu.Value = s.GpuPercent is double g ? $"{g:0}%" : "n/a";
-        Gpu.Sub = "3D engine";
+        // Linux: AMD reports overall busy %, NVIDIA via nvidia-smi; Intel GPUs don't expose a simple load counter
+        Gpu.Sub = s.GpuPercent == null ? (IsLinux ? "Load not reported by this GPU" : "Not available") : IsLinux ? "Busy" : "3D engine";
         Gpu.History = _gpuH.Push(s.GpuPercent ?? 0);
 
         // Network
@@ -230,7 +261,12 @@ public sealed class MainViewModel : ObservableObject
         lines.AddRange(info.Gpus.Select(g => new InfoLine("GPU", g)));
         lines.Add(new("Memory", $"{Fmt.Bytes(s.MemUsed)} / {Fmt.Bytes(s.MemTotal)} ({memPct:0}%)"));
         foreach (var d in s.Drives)
-            lines.Add(new($"Disk ({d.Name})", $"{Fmt.Bytes(d.Total - d.Free)} / {Fmt.Bytes(d.Total)}"));
+        {
+            // "Disk (C:)" fits the key column; long Linux mount points ("/srv/media") go after the value
+            string usage = $"{Fmt.Bytes(d.Total - d.Free)} / {Fmt.Bytes(d.Total)}";
+            if (d.Name.Length <= 4) lines.Add(new($"Disk ({d.Name})", usage));
+            else lines.Add(new("Disk", $"{usage}  ({d.Name})"));
+        }
         lines.AddRange(info.Displays.Select(d => new InfoLine("Display", d)));
         if (s.Battery is { } b) lines.Add(new("Battery", $"{b.Percent}%{(b.Charging ? " (charging)" : "")}"));
         lines.Add(new("Local IP", info.LocalIp));

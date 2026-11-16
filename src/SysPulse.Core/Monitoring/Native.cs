@@ -1,8 +1,10 @@
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
-namespace SysPulse.Services;
+namespace SysPulse.Core;
 
-internal static class Native
+[SupportedOSPlatform("windows")]
+public static class Native
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct MEMORYSTATUSEX
@@ -59,7 +61,7 @@ internal static class Native
     }
 }
 
-internal static class Fmt
+public static class Fmt
 {
     private static readonly string[] Units = ["B", "KB", "MB", "GB", "TB"];
 

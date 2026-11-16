@@ -1,8 +1,11 @@
 using System.ComponentModel;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
+using SysPulse.Core;
+using SysPulse.Core.Remote;
 using SysPulse.Services;
 using SysPulse.ViewModels;
 
@@ -10,8 +13,10 @@ namespace SysPulse;
 
 public partial class MainWindow : Window
 {
-    private readonly MainViewModel _vm = new();
+    private readonly ShellViewModel _shell = new();
+    private readonly MachineViewModel _local;
     private readonly CancellationTokenSource _cts = new();
+    private readonly Dictionary<MachineViewModel, CancellationTokenSource> _remoteLoops = [];
     private readonly AppSettings _settings;
     private readonly TrayIcon _tray;
     private PeriodicTimer? _timer;
@@ -23,7 +28,13 @@ public partial class MainWindow : Window
     {
         _settings = settings;
         InitializeComponent();
-        DataContext = _vm;
+        DataContext = _shell;
+
+        _local = new MachineViewModel($"{Environment.MachineName} (this PC)", saved: null);
+        _shell.Machines.Add(_local);
+        foreach (var saved in _settings.Machines) _shell.Machines.Add(new MachineViewModel(saved.Name, saved));
+        _shell.Selected = _shell.Machines.FirstOrDefault(m => m.Id == _settings.SelectedMachine) ?? _local;
+        _shell.SelectedChanged += m => { _settings.SelectedMachine = m.Id; _settings.Save(); };
 
         RestorePlacement();
         Topmost = _settings.Topmost;
@@ -49,25 +60,28 @@ public partial class MainWindow : Window
         Closing += OnClosing;
     }
 
-    // ---------------------------------------------------------------- monitoring
+    private bool WindowShowing => IsVisible && WindowState != WindowState.Minimized;
+
+    // ---------------------------------------------------------------- this PC
 
     public async void StartMonitoring()
     {
+        foreach (var m in _shell.Machines.Where(m => !m.IsLocal)) StartRemote(m);
         try
         {
             // WMI and perf-counter setup are slow (~1-2 s), so keep them off the UI thread.
             var info = await Task.Run(StaticInfo.Collect);
-            _vm.SetStatic(info);
-            var monitor = await Task.Run(() => new SystemMonitor(info));
-            await RunAsync(monitor, _cts.Token);
+            _local.Dashboard.SetStatic(info);
+            var monitor = await Task.Run(() => SystemMonitors.Create(info));
+            await RunLocalAsync(monitor, _cts.Token);
         }
         catch (Exception ex)
         {
-            _vm.Status = "Failed to start: " + ex.Message;
+            _local.Dashboard.Status = "Failed to start: " + ex.Message;
         }
     }
 
-    private async Task RunAsync(SystemMonitor monitor, CancellationToken ct)
+    private async Task RunLocalAsync(ISystemMonitor monitor, CancellationToken ct)
     {
         _timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_settings.IntervalMs));
         try
@@ -76,13 +90,14 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    bool visible = IsVisible && WindowState != WindowState.Minimized;
-                    var sample = await Task.Run(() => monitor.Sample(includeProcesses: visible), ct);
-                    _vm.Apply(sample); // back on the UI thread here
+                    // The process list is the expensive part: only when someone can see it.
+                    bool showProcesses = WindowShowing && _shell.Selected == _local;
+                    var sample = await Task.Run(() => monitor.Sample(includeProcesses: showProcesses), ct);
+                    _local.ApplySample(sample); // back on the UI thread here
                     UpdateTray(sample);
                 }
                 catch (OperationCanceledException) { break; }
-                catch (Exception ex) { _vm.Status = "Sampling error: " + ex.Message; }
+                catch (Exception ex) { _local.Dashboard.Status = "Sampling error: " + ex.Message; }
             }
             while (await _timer.WaitForNextTickAsync(ct));
         }
@@ -99,6 +114,93 @@ public partial class MainWindow : Window
         double mem = s.MemTotal > 0 ? 100.0 * s.MemUsed / s.MemTotal : 0;
         _tray.Update(s.CpuPercent,
             $"SysPulse\nCPU {s.CpuPercent:0}%  ·  RAM {mem:0}%\n↓ {Fmt.Rate(s.NetDown)}  ↑ {Fmt.Rate(s.NetUp)}");
+    }
+
+    // ---------------------------------------------------------------- remote PCs
+
+    private void StartRemote(MachineViewModel m)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _remoteLoops[m] = cts;
+        _ = PollRemoteAsync(m, cts.Token);
+    }
+
+    /// <summary>
+    /// One loop per remote PC. Polls at the update speed while the window is showing, pauses
+    /// while it's hidden (the agent then idles too), backs off when the PC is unreachable.
+    /// </summary>
+    private async Task PollRemoteAsync(MachineViewModel m, CancellationToken ct)
+    {
+        var saved = m.Saved!;
+        using var client = new AgentClient(saved.Host, saved.Port, saved.PairingCode, saved.CertFingerprint);
+        while (!ct.IsCancellationRequested)
+        {
+            TimeSpan wait = TimeSpan.FromMilliseconds(_settings.IntervalMs);
+            if (!WindowShowing)
+            {
+                wait = TimeSpan.FromSeconds(1);
+            }
+            else
+            {
+                try
+                {
+                    if (!m.Dashboard.HasInfo)
+                    {
+                        if (m.State != MachineState.Online) m.SetConnecting();
+                        var info = await client.GetInfoAsync(ct);
+                        m.Dashboard.SetStatic(info.Machine);
+                    }
+                    if (await client.GetSampleAsync(ct) is { } sample) m.ApplySample(sample);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+                catch (AgentAuthException)
+                {
+                    m.SetError($"{m.Name} rejected the saved pairing code (it may have been reset). Remove this PC and add it again with the new code.");
+                    wait = TimeSpan.FromSeconds(30);
+                }
+                catch (AgentCertificateException ex)
+                {
+                    m.SetError(ex.Message);
+                    wait = TimeSpan.FromSeconds(30);
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                {
+                    m.SetOffline(ex is TaskCanceledException ? "timed out" : "no connection");
+                    wait = TimeSpan.FromSeconds(5);
+                }
+            }
+            try { await Task.Delay(wait, ct); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+
+    private void AddMachine_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WindowShowing) ShowFromTray();
+        var dialog = new AddMachineWindow(_settings.Machines) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.Result is not { } saved) return;
+
+        _settings.Machines.Add(saved);
+        _settings.Save();
+        var m = new MachineViewModel(saved.Name, saved);
+        if (dialog.ResultInfo is { } info) m.Dashboard.SetStatic(info.Machine);
+        _shell.Machines.Add(m);
+        _shell.Selected = m;
+        StartRemote(m);
+    }
+
+    private void RemoveMachine_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not MachineViewModel { IsLocal: false } m) return;
+        var answer = MessageBox.Show(this, $"Stop monitoring {m.Name}?\n\nThe agent stays installed on that PC; you can add it again later with its pairing code.",
+            "Remove PC", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        if (answer != MessageBoxResult.OK) return;
+
+        if (_remoteLoops.Remove(m, out var cts)) { cts.Cancel(); cts.Dispose(); }
+        if (_shell.Selected == m) _shell.Selected = _local;
+        _shell.Machines.Remove(m);
+        _settings.Machines.RemoveAll(s => s.Id == m.Id);
+        _settings.Save();
     }
 
     // ---------------------------------------------------------------- tray / window lifecycle
@@ -133,7 +235,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Really quit (tray "Exit", Windows sign-out, installer upgrade).</summary>
+    /// <summary>Really quit (tray "Exit", --exit, Windows sign-out, installer upgrade).</summary>
     public void ExitApp()
     {
         if (_exiting) return;
@@ -193,7 +295,7 @@ public partial class MainWindow : Window
     }
 
     // Checked/Unchecked (not Click) so keyboard, accessibility tools and code all go through the same path.
-    // SyncControls sets IsChecked too; the equality guards stop that from looping.
+    // SyncControls sets IsChecked too; the guards stop that from looping.
     private void Speed_Checked(object sender, RoutedEventArgs e)
     {
         if (_syncing) return;
@@ -235,14 +337,16 @@ public partial class MainWindow : Window
 
     private void CopyInfo_Click(object sender, RoutedEventArgs e)
     {
+        var dashboard = _shell.Selected?.Dashboard;
+        if (dashboard == null) return;
         try
         {
-            Clipboard.SetText(_vm.FetchText());
-            _vm.Status = "System info copied to clipboard";
+            Clipboard.SetText(dashboard.FetchText());
+            dashboard.Status = "System info copied to clipboard";
         }
         catch (Exception ex)
         {
-            _vm.Status = "Copy failed: " + ex.Message;
+            dashboard.Status = "Copy failed: " + ex.Message;
         }
     }
 }

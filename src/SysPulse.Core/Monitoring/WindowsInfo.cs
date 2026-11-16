@@ -1,34 +1,18 @@
-using System.Globalization;
 using System.Management;
-using System.Net.NetworkInformation;
-using System.Net.Sockets;
+using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
-namespace SysPulse.Services;
+namespace SysPulse.Core;
 
-/// <summary>Facts about the machine that don't change while the app runs (collected once, via WMI + registry).</summary>
-public sealed class StaticInfo
+/// <summary>Windows: machine facts via WMI and the registry.</summary>
+[SupportedOSPlatform("windows")]
+internal static class WindowsInfo
 {
-    public string User { get; private set; } = Environment.UserName;
-    public string Host { get; private set; } = Environment.MachineName;
-    public string Os { get; private set; } = "Windows";
-    public string Kernel { get; private set; } = "";
-    public string Model { get; private set; } = "";
-    public string Bios { get; private set; } = "";
-    public string Cpu { get; private set; } = "";
-    public string CpuTopology { get; private set; } = "";
-    public double CpuBaseMhz { get; private set; }
-    public int LogicalProcessors { get; private set; } = Environment.ProcessorCount;
-    public List<string> Gpus { get; } = [];
-    public List<string> Displays { get; } = [];
-    public string Theme { get; private set; } = "";
-    public string Locale { get; private set; } = CultureInfo.CurrentUICulture.Name;
-    public string LocalIp { get; private set; } = "";
-
     public static StaticInfo Collect()
     {
         var i = new StaticInfo();
+        bool asService = System.Security.Principal.WindowsIdentity.GetCurrent().IsSystem;
 
         // OS + kernel build
         using (var cv = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
@@ -47,8 +31,16 @@ public sealed class StaticInfo
             i.Os = string.Join(' ', new[] { caption, display, arch }.Where(s => s.Length > 0));
         }
 
-        foreach (var o in Query("SELECT Manufacturer, Model FROM Win32_ComputerSystem"))
+        foreach (var o in Query("SELECT Manufacturer, Model, UserName FROM Win32_ComputerSystem"))
+        {
             i.Model = $"{Str(o, "Manufacturer")} {Str(o, "Model")}".Trim();
+            if (asService)
+            {
+                // As a Windows service we run as SYSTEM: report who is signed in at the console instead.
+                string console = Str(o, "UserName");
+                i.User = console.Length > 0 ? console[(console.LastIndexOf('\\') + 1)..] : "nobody-signed-in";
+            }
+        }
 
         foreach (var o in Query("SELECT SMBIOSBIOSVersion FROM Win32_BIOS"))
             i.Bios = Str(o, "SMBIOSBIOSVersion");
@@ -70,31 +62,15 @@ public sealed class StaticInfo
                 i.Displays.Add(hz.Length > 0 ? $"{w}x{h} @ {hz} Hz" : $"{w}x{h}");
         }
 
-        using (var p = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+        if (!asService) // SYSTEM's own theme setting would be meaningless
         {
+            using var p = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
             object? light = p?.GetValue("AppsUseLightTheme");
             i.Theme = light is int v ? (v == 0 ? "Dark" : "Light") : "Unknown";
         }
 
-        i.LocalIp = FindLocalIp();
+        i.LocalIp = StaticInfo.FindLocalIp();
         return i;
-    }
-
-    private static string FindLocalIp()
-    {
-        try
-        {
-            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (ni.OperationalStatus != OperationalStatus.Up || ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
-                var props = ni.GetIPProperties();
-                if (props.GatewayAddresses.Count == 0) continue; // skip virtual adapters without a route out
-                var v4 = props.UnicastAddresses.FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork);
-                if (v4 != null) return $"{v4.Address} ({ni.Name})";
-            }
-        }
-        catch { /* ignore */ }
-        return "Not connected";
     }
 
     private static List<ManagementBaseObject> Query(string wql)

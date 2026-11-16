@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SysPulse.Agent/SysPulse.Agent.csproj" />
+    <Project Path="src/SysPulse.Core/SysPulse.Core.csproj" />
+    <Project Path="src/SysPulse/SysPulse.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SysPulse.Core.Tests/SysPulse.Core.Tests.csproj" />
+  </Folder>
+</Solution>
