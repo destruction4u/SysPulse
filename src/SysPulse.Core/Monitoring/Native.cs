@@ -1,7 +1,9 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace SysPulse.Core;
 
+[SupportedOSPlatform("windows")]
 public static class Native
 {
     [StructLayout(LayoutKind.Sequential)]

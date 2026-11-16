@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
@@ -72,7 +72,7 @@ public partial class MainWindow : Window
             // WMI and perf-counter setup are slow (~1-2 s), so keep them off the UI thread.
             var info = await Task.Run(StaticInfo.Collect);
             _local.Dashboard.SetStatic(info);
-            var monitor = await Task.Run(() => new SystemMonitor(info));
+            var monitor = await Task.Run(() => SystemMonitors.Create(info));
             await RunLocalAsync(monitor, _cts.Token);
         }
         catch (Exception ex)
@@ -81,7 +81,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task RunLocalAsync(SystemMonitor monitor, CancellationToken ct)
+    private async Task RunLocalAsync(ISystemMonitor monitor, CancellationToken ct)
     {
         _timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_settings.IntervalMs));
         try

@@ -2,6 +2,7 @@
 #   powershell -ExecutionPolicy Bypass -File build.ps1
 # Output: dist\app\SysPulse.exe, dist\agent\SysPulse.Agent.exe (self-contained, no .NET needed)
 #         dist\SysPulse-Setup-<version>.exe, dist\SysPulse-Agent-Setup-<version>.exe
+#         dist\SysPulse-Agent-linux-{x64,arm64}-<version>.tar.gz
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
@@ -42,5 +43,21 @@ if (-not $iscc) { throw "Inno Setup 6 not found. Install it with: winget install
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (app)" }
 & $iscc /Qp "/DAppVersion=$agentVersion" installer\SysPulseAgent.iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (agent)" }
+
+# Linux agent: self-contained single file per CPU type, packed with install.sh as a .tar.gz
+foreach ($arch in 'x64', 'arm64') {
+    $stage = "dist\linux-$arch\syspulse-agent"
+    dotnet publish src\SysPulse.Agent\SysPulse.Agent.csproj -c Release -r "linux-$arch" --self-contained true `
+        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -nologo -o "dist\linux-$arch\bin"
+    if ($LASTEXITCODE -ne 0) { throw "dotnet publish (linux-$arch) failed" }
+    New-Item -ItemType Directory -Force $stage | Out-Null
+    Move-Item "dist\linux-$arch\bin\SysPulse.Agent" "$stage\syspulse-agent"
+    Remove-Item -Recurse -Force "dist\linux-$arch\bin"
+    Copy-Item installer\linux\install.sh, LICENSE $stage
+    [IO.File]::WriteAllText("$PWD\$stage\ARCH", $arch)
+    $tgz = "dist\SysPulse-Agent-linux-$arch-$agentVersion.tar.gz"
+    tar -czf $tgz -C "dist\linux-$arch" syspulse-agent   # tar.exe ships with Windows 10+
+    if ($LASTEXITCODE -ne 0) { throw "tar failed ($arch)" }
+}
 
 Get-ChildItem dist -File | ForEach-Object { "{0}  ({1:N1} MB)" -f $_.FullName, ($_.Length / 1MB) }

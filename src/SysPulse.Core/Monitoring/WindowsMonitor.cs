@@ -1,29 +1,17 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Net.NetworkInformation;
+using System.Runtime.Versioning;
 
 namespace SysPulse.Core;
-
-public sealed record ProcSample(string Name, int Pid, double Cpu, long Memory);
-public sealed record DriveSample(string Name, string Label, long Total, long Free);
-public sealed record BatterySample(int Percent, bool Charging, bool OnAc, int SecondsLeft);
-
-public sealed record Sample(
-    double CpuPercent, double? CpuMhz, double[] CorePercents,
-    ulong MemTotal, ulong MemUsed, ulong CommitTotal, ulong CommitUsed,
-    double NetDown, double NetUp,
-    double? DiskActive, double? DiskRead, double? DiskWrite,
-    double? GpuPercent,
-    IReadOnlyList<ProcSample>? TopProcesses, int? ProcessCount, // null when skipped (window hidden)
-    IReadOnlyList<DriveSample> Drives,
-    BatterySample? Battery, TimeSpan Uptime);
 
 /// <summary>
 /// Takes one snapshot of live system load per call to <see cref="Sample"/>.
 /// Uses the same performance counters as Task Manager where possible, with fallbacks.
 /// Not thread-safe: call from one thread at a time.
 /// </summary>
-public sealed class SystemMonitor : IDisposable
+[SupportedOSPlatform("windows")]
+public sealed class WindowsMonitor : ISystemMonitor
 {
     private readonly StaticInfo _info;
 
@@ -42,7 +30,7 @@ public sealed class SystemMonitor : IDisposable
     private IReadOnlyList<DriveSample> _drives = [];
     private int _tick;
 
-    public SystemMonitor(StaticInfo info)
+    public WindowsMonitor(StaticInfo info)
     {
         _info = info;
         _cpuTotal = TryCounter("Processor Information", "% Processor Utility", "_Total");

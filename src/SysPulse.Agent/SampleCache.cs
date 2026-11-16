@@ -26,7 +26,7 @@ public sealed class SampleCache(ILogger<SampleCache> log) : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         _info = await Task.Run(StaticInfo.Collect, ct);
-        using var monitor = await Task.Run(() => new SystemMonitor(_info), ct);
+        using var monitor = await Task.Run(() => SystemMonitors.Create(_info), ct);
         log.LogInformation("Monitoring started for {Host}", _info.Host);
 
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));

@@ -8,8 +8,11 @@
     <StackPanel Margin="22,18,22,20">
         <TextBlock Text="Add a PC to monitor" FontSize="18" FontWeight="SemiBold"/>
         <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,16">
-            Install SysPulse Agent on the other PC. At the end of setup it shows an address and a
-            pairing code (also under Start ▸ "SysPulse Agent - Show pairing code").
+            Install SysPulse Agent on the other PC. When setup finishes it shows an address and a pairing code.
+            <LineBreak/><LineBreak/>
+            To see them again later:
+            <LineBreak/>• Windows: Start ▸ "SysPulse Agent - Show pairing code"
+            <LineBreak/>• Linux: <Run FontFamily="{StaticResource Mono}">sudo /opt/syspulse-agent/syspulse-agent --pairing</Run>
         </TextBlock>
 
         <TextBlock Text="ADDRESS" Style="{StaticResource CardTitle}" Margin="0,0,0,5"/>

@@ -66,12 +66,13 @@ public partial class AddMachineWindow : Window
         }
         catch (AgentAuthException)
         {
-            Fail("The pairing code doesn't match. Check it under Start ▸ \"SysPulse Agent - Show pairing code\" on the other PC.");
+            Fail("The pairing code doesn't match. Show the current code on the other PC (see above) and try again.");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            Fail($"Couldn't reach {host}:{port}. Check that SysPulse Agent is installed and running there, both PCs are on the same network, " +
-                 "and that network is set to Private in Windows (the agent's firewall rule doesn't allow Public networks).");
+            Fail($"Couldn't reach {host}:{port}. Check that SysPulse Agent is installed and running there and both PCs are on the same network. " +
+                 "Windows: the network must be set to Private (the agent's firewall rule skips Public networks). " +
+                 "Linux: if it uses a firewall other than ufw or firewalld, allow TCP port 47613 from your local network.");
         }
         catch (Exception ex)
         {

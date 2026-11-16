@@ -161,7 +161,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{Binding Logo}" FontFamily="{StaticResource Mono}" FontSize="9"
                                    LineStackingStrategy="BlockLineHeight" LineHeight="10"
-                                   Foreground="{StaticResource Accent}" Margin="0,4,16,0" VerticalAlignment="Top"/>
+                                   Foreground="{Binding LogoBrush}" Margin="0,4,16,0" VerticalAlignment="Top"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{Binding Title}" FontFamily="{StaticResource Mono}" FontSize="15"
                                        FontWeight="Bold" Foreground="{StaticResource Accent}" TextTrimming="CharacterEllipsis"/>

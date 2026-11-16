@@ -8,14 +8,23 @@ using SysPulse.Core.Remote;
 if (Cli.TryRun(args, out int exitCode)) return exitCode;
 
 string dataDir = Cli.Option(args, "--data-dir") ?? AgentConfig.DefaultDir;
-if (dataDir == AgentConfig.DefaultDir && !AgentConfig.IsElevated && !System.Security.Principal.WindowsIdentity.GetCurrent().IsSystem)
+AgentConfig config;
+System.Security.Cryptography.X509Certificates.X509Certificate2 certificate;
+try
 {
-    Console.Error.WriteLine("SysPulse Agent normally runs as a Windows service. To run it by hand, use an elevated prompt, or pass --data-dir <folder> for a test setup.");
+    // The service account (SYSTEM on Windows, syspulse-agent on Linux) can read the config; ordinary users can't.
+    if (dataDir == AgentConfig.DefaultDir && !AgentConfig.IsPrivileged && !File.Exists(Path.Combine(dataDir, "agent.json")))
+        throw new UnauthorizedAccessException();
+    config = AgentConfig.LoadOrCreate(dataDir);
+    certificate = AgentConfig.LoadOrCreateCertificate(dataDir);
+}
+catch (UnauthorizedAccessException)
+{
+    Console.Error.WriteLine(OperatingSystem.IsWindows()
+        ? "SysPulse Agent normally runs as a Windows service. To run it by hand, use an elevated prompt, or pass --data-dir <folder> for a test setup."
+        : "SysPulse Agent normally runs as a systemd service (systemctl status syspulse-agent). To run it by hand, use sudo, or pass --data-dir <folder> for a test setup.");
     return 1;
 }
-
-var config = AgentConfig.LoadOrCreate(dataDir);
-var certificate = AgentConfig.LoadOrCreateCertificate(dataDir);
 string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?";
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -24,6 +33,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     ContentRootPath = AppContext.BaseDirectory, // services start in System32 otherwise
 });
 builder.Host.UseWindowsService(o => o.ServiceName = AgentProtocol.ServiceName);
+builder.Host.UseSystemd(); // readiness + journal-friendly logs when started by systemd
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
 builder.Logging.AddFilter("SysPulse", LogLevel.Information);
 
