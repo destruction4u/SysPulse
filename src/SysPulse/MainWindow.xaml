@@ -97,6 +97,8 @@
     <DockPanel DockPanel.Dock="Top" Margin="6,0,6,2">
         <Button DockPanel.Dock="Right" Content="+ Add PC" Click="AddMachine_Click" VerticalAlignment="Top" Margin="8,4,0,0"
                 ToolTip="Monitor another PC on your network (it needs SysPulse Agent installed)"/>
+        <Button DockPanel.Dock="Right" Content="+ Add phone" Click="AddAndroid_Click" VerticalAlignment="Top" Margin="8,4,0,0"
+                ToolTip="Monitor an Android device over adb (USB or Wi-Fi debugging; no app installed on the phone)"/>
         <ListBox ItemsSource="{Binding Machines}" SelectedItem="{Binding Selected}"
                  ItemContainerStyle="{StaticResource MachineChip}"
                  Background="Transparent" BorderThickness="0" Padding="0"

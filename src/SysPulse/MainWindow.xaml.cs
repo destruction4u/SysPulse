@@ -66,7 +66,7 @@ public partial class MainWindow : Window
 
     public async void StartMonitoring()
     {
-        foreach (var m in _shell.Machines.Where(m => !m.IsLocal)) StartRemote(m);
+        foreach (var m in _shell.Machines.Where(m => !m.IsLocal)) StartMachine(m);
         try
         {
             // WMI and perf-counter setup are slow (~1-2 s), so keep them off the UI thread.
@@ -116,7 +116,13 @@ public partial class MainWindow : Window
             $"SysPulse\nCPU {s.CpuPercent:0}%  ·  RAM {mem:0}%\n↓ {Fmt.Rate(s.NetDown)}  ↑ {Fmt.Rate(s.NetUp)}");
     }
 
-    // ---------------------------------------------------------------- remote PCs
+    // ---------------------------------------------------------------- remote machines (PC agent or Android)
+
+    private void StartMachine(MachineViewModel m)
+    {
+        if (m.Saved!.Kind == MachineKind.Android) StartAndroid(m);
+        else StartRemote(m);
+    }
 
     private void StartRemote(MachineViewModel m)
     {
@@ -189,11 +195,102 @@ public partial class MainWindow : Window
         StartRemote(m);
     }
 
+    // ---------------------------------------------------------------- Android devices (over adb)
+
+    private void AddAndroid_Click(object sender, RoutedEventArgs e)
+    {
+        if (!WindowShowing) ShowFromTray();
+        var dialog = new AddAndroidWindow(_settings.Machines) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.Result is not { } saved) return;
+
+        _settings.Machines.Add(saved);
+        _settings.Save();
+        var m = new MachineViewModel(saved.Name, saved);
+        if (dialog.ResultInfo is { } info) m.Dashboard.SetStatic(info);
+        _shell.Machines.Add(m);
+        _shell.Selected = m;
+        StartAndroid(m);
+    }
+
+    private void StartAndroid(MachineViewModel m)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _remoteLoops[m] = cts;
+        _ = PollAndroidAsync(m, cts.Token);
+    }
+
+    /// <summary>
+    /// One loop per Android device. There's no agent on the phone, so this PC pulls each reading over adb.
+    /// Polls at the update speed while the window is showing; a dropped connection (unplugged, or debugging
+    /// revoked) shows the device offline and it reconnects on its own when adb can reach it again.
+    /// </summary>
+    private async Task PollAndroidAsync(MachineViewModel m, CancellationToken ct)
+    {
+        var saved = m.Saved!;
+        if (AdbClient.FindAdb() is not { } adbPath)
+        {
+            m.SetError("adb (Android platform-tools) wasn't found. Install it or set SYSPULSE_ADB to adb.exe, then restart SysPulse.");
+            return;
+        }
+        var client = new AdbClient(adbPath, saved.AdbSerial);
+        AndroidMonitor? monitor = null;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                TimeSpan wait = TimeSpan.FromMilliseconds(_settings.IntervalMs);
+                if (!WindowShowing)
+                {
+                    wait = TimeSpan.FromSeconds(1);
+                }
+                else
+                {
+                    try
+                    {
+                        if (monitor == null)
+                        {
+                            if (m.State != MachineState.Online) m.SetConnecting();
+                            if (!m.Dashboard.HasInfo)
+                            {
+                                var info = await Task.Run(() => AndroidInfo.Collect(client), ct);
+                                if (info.LogicalProcessors == 0 && info.Model.Length == 0)
+                                    throw new InvalidOperationException("device not responding");
+                                m.Dashboard.SetStatic(info);
+                            }
+                            monitor = await Task.Run(() => new AndroidMonitor(client), ct);
+                        }
+                        bool showProcesses = WindowShowing && _shell.Selected == m;
+                        var sample = await Task.Run(() => monitor!.Sample(includeProcesses: showProcesses), ct);
+                        if (sample.MemTotal == 0) throw new InvalidOperationException("disconnected"); // adb read failed
+                        m.ApplySample(sample);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+                    catch (Exception ex)
+                    {
+                        m.SetOffline(ex is InvalidOperationException ? ex.Message : "no connection");
+                        monitor?.Dispose();
+                        monitor = null;
+                        wait = TimeSpan.FromSeconds(5);
+                    }
+                }
+                try { await Task.Delay(wait, ct); }
+                catch (OperationCanceledException) { break; }
+            }
+        }
+        finally
+        {
+            monitor?.Dispose();
+        }
+    }
+
     private void RemoveMachine_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not MachineViewModel { IsLocal: false } m) return;
-        var answer = MessageBox.Show(this, $"Stop monitoring {m.Name}?\n\nThe agent stays installed on that PC; you can add it again later with its pairing code.",
-            "Remove PC", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        string prompt = m.Saved!.Kind == MachineKind.Android
+            ? $"Stop monitoring {m.Name}?\n\nThis only removes it from SysPulse. You can add it again later over adb."
+            : $"Stop monitoring {m.Name}?\n\nThe agent stays installed on that PC; you can add it again later with its pairing code.";
+        var answer = MessageBox.Show(this, prompt,
+            "Remove device", MessageBoxButton.OKCancel, MessageBoxImage.Question);
         if (answer != MessageBoxResult.OK) return;
 
         if (_remoteLoops.Remove(m, out var cts)) { cts.Cancel(); cts.Dispose(); }

@@ -1,0 +1,47 @@
+<Window x:Class="SysPulse.AddAndroidWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add an Android device" Width="470" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Fg}"
+        FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True">
+    <StackPanel Margin="22,18,22,20">
+        <TextBlock Text="Add an Android device" FontSize="18" FontWeight="SemiBold"/>
+        <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" TextTrimming="None" Margin="0,6,0,16">
+            SysPulse reads the phone over adb from this PC; nothing is installed on the phone.
+            <LineBreak/><LineBreak/>
+            On the phone: Settings ▸ About phone ▸ tap Build number 7 times, then
+            Settings ▸ System ▸ Developer options ▸ turn on <Run FontWeight="SemiBold">USB debugging</Run>,
+            connect by USB and tap <Run FontWeight="SemiBold">Allow</Run>.
+            <LineBreak/>For Wi-Fi, turn on <Run FontWeight="SemiBold">Wireless debugging</Run> and enter its IP:port below.
+            <LineBreak/><LineBreak/>
+            <Run FontWeight="SemiBold">Note:</Run> monitoring works only while debugging is on and this PC is connected;
+            it is not an always-on agent like the PC option.
+        </TextBlock>
+
+        <TextBlock Text="CONNECTED DEVICE" Style="{StaticResource CardTitle}" Margin="0,0,0,5"/>
+        <DockPanel>
+            <Button x:Name="RefreshButton" DockPanel.Dock="Right" Content="Refresh" Click="Refresh_Click"
+                    MinWidth="80" Margin="8,0,0,0"/>
+            <ComboBox x:Name="DeviceBox" DisplayMemberPath="Display"/>
+        </DockPanel>
+
+        <TextBlock Text="OR CONNECT OVER WI-FI (IP:PORT)" Style="{StaticResource CardTitle}" Margin="0,14,0,5"/>
+        <DockPanel>
+            <Button x:Name="WirelessButton" DockPanel.Dock="Right" Content="Connect" Click="Wireless_Click"
+                    MinWidth="80" Margin="8,0,0,0"/>
+            <TextBox x:Name="WirelessBox" ToolTip="From the phone's Wireless debugging screen, e.g. 192.168.1.189:37000"/>
+        </DockPanel>
+
+        <TextBlock Text="NAME (OPTIONAL)" Style="{StaticResource CardTitle}" Margin="0,14,0,5"/>
+        <TextBox x:Name="NameBox" ToolTip="Shown in the machine bar. Defaults to the phone's model."/>
+
+        <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,14,0,0" MinHeight="18"
+                   Foreground="{StaticResource Muted}"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Cancel" IsCancel="True" Margin="0,0,8,0" MinWidth="80"/>
+            <Button x:Name="AddButton" Content="Add" IsDefault="True" Click="Add_Click" MinWidth="96"/>
+        </StackPanel>
+    </StackPanel>
+</Window>
