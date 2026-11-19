@@ -118,8 +118,20 @@ public sealed class DashboardViewModel : ObservableObject
     public IReadOnlyList<DriveRow> Drives { get => _drives; private set => Set(ref _drives, value); }
     public string Status { get => _status; set => Set(ref _status, value); }
 
-    private static readonly Brush WindowsLogoBrush = B("#4FC3F7"), LinuxLogoBrush = B("#FFD54F");
+    private static readonly Brush WindowsLogoBrush = B("#4FC3F7"), LinuxLogoBrush = B("#FFD54F"), AndroidLogoBrush = B("#3DDC84");
     private static readonly string WindowsLogo = BuildWindowsLogo();
+
+    /// <summary>An Android robot in block characters (Android devices), neofetch style.</summary>
+    private const string AndroidLogo = """
+          ▄▄       ▄▄
+            ██   ██
+          ▄▄███████▄▄
+         ██  ██ ██  ██
+         ███████████
+         ██       ██
+         ██       ██
+          ▀▀     ▀▀
+        """;
 
     /// <summary>A penguin in block characters (Linux machines), neofetch style.</summary>
     private const string LinuxLogo = """
@@ -143,6 +155,8 @@ public sealed class DashboardViewModel : ObservableObject
     public Brush LogoBrush { get => _logoBrush; private set => Set(ref _logoBrush, value); }
 
     private bool IsLinux => _info?.Platform == "Linux";
+    private bool IsAndroid => _info?.Platform == "Android";
+    private bool IsUnixLike => IsLinux || IsAndroid; // swap in the "commit" slot, same /proc semantics
 
     private static string BuildWindowsLogo()
     {
@@ -161,8 +175,8 @@ public sealed class DashboardViewModel : ObservableObject
         Title = $"{info.User}@{info.Host}";
         Raise(nameof(Separator));
         Gpu.Sub2 = info.Gpus.FirstOrDefault() ?? "";
-        Logo = IsLinux ? LinuxLogo : WindowsLogo;
-        LogoBrush = IsLinux ? LinuxLogoBrush : WindowsLogoBrush;
+        Logo = IsAndroid ? AndroidLogo : IsLinux ? LinuxLogo : WindowsLogo;
+        LogoBrush = IsAndroid ? AndroidLogoBrush : IsLinux ? LinuxLogoBrush : WindowsLogoBrush;
         Status = "Starting monitors…";
     }
 
@@ -182,7 +196,7 @@ public sealed class DashboardViewModel : ObservableObject
         double memPct = s.MemTotal > 0 ? 100.0 * s.MemUsed / s.MemTotal : 0;
         Memory.Value = $"{memPct:0}%";
         Memory.Sub = $"{Fmt.Bytes(s.MemUsed)} / {Fmt.Bytes(s.MemTotal)}";
-        Memory.Sub2 = IsLinux
+        Memory.Sub2 = IsUnixLike
             ? (s.CommitTotal > 0 ? $"Swap {Fmt.Bytes(s.CommitUsed)} / {Fmt.Bytes(s.CommitTotal)}" : "No swap")
             : $"Commit {Fmt.Bytes(s.CommitUsed)} / {Fmt.Bytes(s.CommitTotal)}";
         Memory.History = _memH.Push(memPct);
